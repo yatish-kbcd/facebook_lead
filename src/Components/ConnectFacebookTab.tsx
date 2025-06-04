@@ -1,7 +1,12 @@
 // ConnectFacebookTab.tsx
-import React, { useEffect } from 'react';
-import { ChevronRight, Facebook, Loader } from 'lucide-react';
-import type { CRMFieldOption, FacebookApp, FacebookForm, FacebookPage } from './types';
+import React, { useEffect } from "react";
+import { ChevronRight, Facebook, Loader } from "lucide-react";
+import type {
+  CRMFieldOption,
+  FacebookApp,
+  FacebookForm,
+  FacebookPage,
+} from "./types";
 
 interface ConnectFacebookTabProps {
   loading: boolean;
@@ -18,11 +23,11 @@ interface ConnectFacebookTabProps {
   setForms: (forms: FacebookForm[]) => void;
   selectedForm: FacebookForm | null;
   setSelectedForm: (form: FacebookForm | null) => void;
-  setActiveTab: (tab: 'connect' | 'mapping' | 'leads' | 'failed') => void;
+  setActiveTab: (tab: "connect" | "mapping" | "leads" | "failed") => void;
   crmFieldOptions: CRMFieldOption[];
 }
 
-const API_BASE = 'http://localhost:3000';
+const API_BASE = "http://localhost:3000";
 
 const ConnectFacebookTab: React.FC<ConnectFacebookTabProps> = ({
   loading,
@@ -40,45 +45,58 @@ const ConnectFacebookTab: React.FC<ConnectFacebookTabProps> = ({
   selectedForm,
   setSelectedForm,
   setActiveTab,
-  crmFieldOptions
+  crmFieldOptions,
 }) => {
   // Check if we're returning from Facebook auth
   useEffect(() => {
     const checkAuthStatus = async () => {
       const urlParams = new URLSearchParams(window.location.search);
-      const authStatus = urlParams.get('auth');
-      
-      if (authStatus === 'success') {
-        setSuccess('Successfully connected with Facebook!');
+      const authStatus = urlParams.get("auth");
+
+      if (authStatus === "success") {
+        setSuccess("Successfully connected with Facebook!");
         // Remove the query params from URL
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
         await initializeConnection();
-      } else if (authStatus === 'error') {
-        setError('Failed to authenticate with Facebook');
-        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (authStatus === "error") {
+        setError("Failed to authenticate with Facebook");
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
       }
     };
 
     checkAuthStatus();
   }, []);
 
+  // Update the initializeConnection function in ConnectFacebookTab.tsx
   const initializeConnection = async () => {
     setLoading(true);
     try {
       // Check if we already have an app connected
       const appResponse = await fetch(`${API_BASE}/api/app-mst`);
       const appData = await appResponse.json();
-      
+
+      if (!appResponse.ok) {
+        throw new Error(appData.error || "Failed to fetch app data");
+      }
+
       if (appData.success && appData.data.length > 0) {
-        const app = appData.data[0];
-        setSelectedApp({ id: app.app_id, name: app.app_name });
+        const app = appData.data[0].app;
+        setSelectedApp({ id: app.id, name: app.name });
         await loadPages();
       } else {
         // No app connected yet, but we're authenticated
-        setSelectedApp({ id: 'default', name: 'Facebook Lead Integration' });
+        setSelectedApp({ id: "default", name: "Facebook Lead Integration" });
       }
     } catch (err) {
-      setError('Error initializing connection: ' + (err as Error).message);
+      setError("Error initializing connection: " + (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -89,66 +107,95 @@ const ConnectFacebookTab: React.FC<ConnectFacebookTabProps> = ({
     window.location.href = `${API_BASE}/auth/facebook`;
   };
 
-  const loadPages = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/pages`);
-      const data = await response.json();
-      if (data.success) {
-        setPages(data.pages);
-      } else {
-        setError(data.error || 'Failed to load pages');
-      }
-    } catch (err) {
-      setError('Error loading pages: ' + (err as Error).message);
-    }
-  };
-
-  const handlePageSelect = async (page: FacebookPage) => {
-    setSelectedPage(page);
-    setLoading(true);
+  // Update the loadPages function in ConnectFacebookTab.tsx
+  // Update your ConnectFacebookTab.tsx
+const loadPages = async () => {
+  setLoading(true);
+  setError('');
+  try {
+    const response = await fetch(`${API_BASE}/api/pages`);
+    const data = await response.json();
     
-    try {
-      const response = await fetch(`${API_BASE}/api/forms/${page.id}/${page.access_token}`);
-      const data = await response.json();
-      if (data.success) {
-        setForms(data.forms);
-      } else {
-        setError(data.error || 'Failed to load forms');
-      }
-    } catch (err) {
-      setError('Error loading forms: ' + (err as Error).message);
-    } finally {
-      setLoading(false);
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to load pages');
     }
-  };
+    
+    if (data.requiresReconnect) {
+      setError(data.error);
+      setSelectedApp(null);
+      setPages([]);
+      setForms([]);
+      return;
+    }
+    
+    if (data.success) {
+      setPages(data.pages);
+    }
+  } catch (err) {
+    setError('Error loading pages: ' + (err as Error).message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handlePageSelect = async (page: FacebookPage) => {
+  setSelectedPage(page);
+  setLoading(true);
+  setError('');
+  
+  try {
+    const response = await fetch(`${API_BASE}/api/forms/${page.id}`);
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to load forms');
+    }
+    
+    if (data.requiresReconnect) {
+      setError(data.error);
+      setForms([]);
+      return;
+    }
+    
+    if (data.success) {
+      setForms(data.forms);
+    }
+  } catch (err) {
+    setError('Error loading forms: ' + (err as Error).message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleFormSelect = async (form: FacebookForm) => {
     setSelectedForm(form);
     setLoading(true);
-    
+
     try {
       const response = await fetch(`${API_BASE}/api/save-form`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           appId: selectedApp?.id,
           pageId: selectedPage?.id,
           pageName: selectedPage?.name,
           formId: form.id,
           formName: form.name,
-          pageAccessToken: selectedPage?.access_token
-        })
+          pageAccessToken: selectedPage?.access_token,
+        }),
       });
 
       const data = await response.json();
       if (data.success) {
-        setSuccess('Form connected successfully! You can now set up field mapping.');
-        setActiveTab('mapping');
+        setSuccess(
+          "Form connected successfully! You can now set up field mapping."
+        );
+        setActiveTab("mapping");
       } else {
-        setError(data.error || 'Failed to save form');
+        setError(data.error || "Failed to save form");
       }
     } catch (err) {
-      setError('Error saving form: ' + (err as Error).message);
+      setError("Error saving form: " + (err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -161,12 +208,13 @@ const ConnectFacebookTab: React.FC<ConnectFacebookTabProps> = ({
           <Facebook className="mr-2 text-blue-600" />
           Connect Facebook Integration
         </h2>
-        
+
         <div className="space-y-4">
           <p className="text-gray-600">
-            Connect your Facebook account to access lead forms. You'll be redirected to Facebook to authorize access.
+            Connect your Facebook account to access lead forms. You'll be
+            redirected to Facebook to authorize access.
           </p>
-          
+
           <button
             onClick={handleFacebookLogin}
             disabled={loading}
@@ -219,9 +267,9 @@ const ConnectFacebookTab: React.FC<ConnectFacebookTabProps> = ({
                   key={page.id}
                   onClick={() => handlePageSelect(page)}
                   className={`p-4 border rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 ${
-                    selectedPage?.id === page.id 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200'
+                    selectedPage?.id === page.id
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200"
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -247,9 +295,9 @@ const ConnectFacebookTab: React.FC<ConnectFacebookTabProps> = ({
                 key={form.id}
                 onClick={() => handleFormSelect(form)}
                 className={`p-4 border rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 ${
-                  selectedForm?.id === form.id 
-                    ? 'border-blue-500 bg-blue-50' 
-                    : 'border-gray-200'
+                  selectedForm?.id === form.id
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200"
                 }`}
               >
                 <div className="flex items-center justify-between">
